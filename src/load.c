@@ -95,17 +95,15 @@
 /* I am aware I can just use cast the pointers and dereference, but I want 
    to remain as well-defined as possible under C89 and really old msvc. */
 
-_XM_STATIC_ASSERT_GLOBAL(sizeof(float) == sizeof(uint32_t), "Nonstandard floating point representation type used");
-
 /* Type punning helpers */
-static INLINE uint32_t F32_TO_U32(float x) {
+static uint32_t F32_TO_U32(float x) {
     uint32_t y;
     memcpy(&y, &x, sizeof(float));
     return y;
 }
-static INLINE float U32_TO_F32(uint32_t x) {
+static float U32_TO_F32(uint32_t x) {
     float y;
-    memcpy(&y, &x, sizeof(float));
+    memcpy(&y, &x, sizeof(uint32_t));
     return y;
 }
 
@@ -169,10 +167,6 @@ static void xm_load_s3m_pattern(xm_context_t*, uint8_t, const uint8_t*, const ui
 
 bool xm_prescan_module(const char* moddata, uint32_t moddata_length, xm_prescan_data_t* out) {
     uint32_t sz;
-    bool load = true;
-    char chn;
-    char chn2;
-    char chn3;
 
     if (moddata_length >= 10 && memcmp("LIBXMIF\xFF", moddata + 2, 8) == 0) {
         out->format = XM_FORMAT_XMIF;
@@ -212,12 +206,15 @@ bool xm_prescan_module(const char* moddata, uint32_t moddata_length, xm_prescan_
 
     /* XXX: detect 15 sample MODs? */
     if(moddata_length >= 154+31*30) {
+        bool load = true;
+        const char chn = moddata[150 + 31 * 30];
+        const char chn2 = moddata[151 + 31 * 30];
+        const char chn3 = moddata[153+31*30];
+
+
         out->num_instruments = 31;
         out->format = XM_FORMAT_MOD;
 
-        chn = moddata[150+31*30];
-        chn2 = moddata[151+31*30];
-        chn3 = moddata[153+31*30];
 
         if(memcmp("M.K.", moddata + 150+31*30, 4) == 0
            || memcmp("M!K!", moddata + 150+31*30, 4) == 0
@@ -285,7 +282,10 @@ bool xm_prescan_module(const char* moddata, uint32_t moddata_length, xm_prescan_
         return false;
     }
     if(sz > 128 << 20) {
-        NOTICE("xm_prescan_module", "module is suspiciously large (%u bytes), aborting load as this is probably a corrupt/malicious file, or a bug in libxm", sz);
+        NOTICE("xm_prescan_module", 
+            "module is suspiciously large (%u bytes), aborting load "
+            "as this is probably a corrupt/malicious file, "
+            "or a bug in libxm", sz);
         return false;
     }
 
@@ -462,8 +462,6 @@ uint32_t xm_size_for_context(const xm_prescan_data_t* p) {
     return p->context_size;
 }
 
-
-
 static int8_t xm_dither_16b_8b(int16_t x) {
     static uint32_t state = 0; /* XXX: make me reentrant */
     return (x >= 32512) ? 127 : (int8_t)((x + (int16_t)(xm_rand16(&state) % 256)) / 256);
@@ -511,13 +509,13 @@ void xm_dump_context(xm_context_t* ctx, char* out) {
     uint32_t i;
     uint32_t ctx_size;
     uint64_t old_hash;
-    xm_channel_context_t* ch;
+    
 
     /* Reset internal pointers and playback position to 0 (normally not
        needed with correct usage of this function) */
 
     for(i = 0; i < NUM_CHANNELS(&ctx->module); ++i) {
-        ch = ctx->channels + i;
+        xm_channel_context_t* ch = ctx->channels + i;
         #if HAS_INSTRUMENTS
         ch->instrument = 0;
         #endif
@@ -702,12 +700,11 @@ static bool xm_prescan_xmif(const char* moddata,
 static void xm_load_xmif(xm_context_t* ctx,
                          const char* moddata,
                          uint32_t moddata_length) {
-    uint32_t offset, i, x;
+    uint32_t offset, i;
     uint16_t pattern_sz, pattern_slot_sz, instrument_sz, sample_sz;
     uint8_t j, k;
 
     xm_pattern_slot_t* s;
-    xm_envelope_t* envs[2];
 
     offset = (uint32_t)(READ_U8(0) << 3);
     pattern_sz = (uint16_t)(READ_U8(0x20) << 3),
@@ -780,6 +777,8 @@ static void xm_load_xmif(xm_context_t* ctx,
     #if HAS_INSTRUMENTS
     ctx->module.num_instruments = READ_U8(0x18);
     for(i = 0; i < ctx->module.num_instruments; ++i) {
+        xm_envelope_t* envs[2];
+
         #if HAS_FEATURE(FEATURE_VOLUME_ENVELOPES)
         envs[0] = &(ctx->instruments[i].volume_envelope);
         #else
@@ -881,7 +880,7 @@ uint32_t xm_save_size(const xm_context_t* ctx) {
     return sz;
 }
 
-_XM_STATIC_ASSERT_GLOBAL(sizeof(float) == 4, "");
+_XM_STATIC_ASSERT_GLOBAL(sizeof(float) == 4, "Nonstandard floating point representation type used");
 #define WRITE_U8(buf, val) *(uint8_t*)(buf) = (uint8_t)(val)
 #define WRITE_U16(buf, val) do { WRITE_U8(buf, val); \
         WRITE_U8((buf) + 1, (val) >> 8); } while(0)
@@ -889,13 +888,11 @@ _XM_STATIC_ASSERT_GLOBAL(sizeof(float) == 4, "");
         WRITE_U16((buf) + 2, (val) >> 16); } while(0)
 
 void xm_save_context(const xm_context_t* ctx, char* out) {
-    xm_pattern_slot_t* s;
+    
     uint32_t i;
-    uint16_t smp_index;
     uint8_t j, k;
 
-    xm_envelope_t* envs[2];
-
+    xm_pattern_slot_t* s = ctx->pattern_slots;
 
     memset(out, 0, xm_save_size(ctx));
 
@@ -933,7 +930,6 @@ void xm_save_context(const xm_context_t* ctx, char* out) {
         out += XMIF_PATTERN_SZ;
     }
 
-    s = ctx->pattern_slots;
     for(i = 0; i < ctx->module.num_rows; ++i) {
         for(j = 0; j < NUM_CHANNELS(&ctx->module); ++j) {
             WRITE_U8(out, s->note);
@@ -947,6 +943,8 @@ void xm_save_context(const xm_context_t* ctx, char* out) {
     }
 
     for(i = 0; i < NUM_INSTRUMENTS(&ctx->module); ++i) {
+        xm_envelope_t* envs[2];
+
         #if HAS_FEATURE(FEATURE_VOLUME_ENVELOPES)
         envs[0] = &(ctx->instruments[i].volume_envelope);
         #else
@@ -983,6 +981,7 @@ void xm_save_context(const xm_context_t* ctx, char* out) {
         WRITE_U8(out + 0x6D, ctx->instruments[i].vibrato_rate);
         #endif
         for(j = 0; j < MAX_NOTE; ++j) {
+            uint16_t smp_index;
             #if HAS_FEATURE(FEATURE_MULTISAMPLE_INSTRUMENTS)
             smp_index = ctx->instruments[i].sample_of_notes[j];
             #else
@@ -1021,16 +1020,12 @@ void xm_save_context(const xm_context_t* ctx, char* out) {
 static bool xm_prescan_xm0104(const char* moddata,
                               uint32_t moddata_length,
                               xm_prescan_data_t* out) {
-    uint16_t num_channels, num_instruments, num_samples;
-    uint32_t inst_samples_bytes, sample_header_size;
+    uint16_t num_channels, num_instruments;
 
-    uint32_t sample_length, sample_bytes, loop_start, loop_length;
-    uint8_t flags;
 
     uint8_t pot[PATTERN_ORDER_TABLE_LENGTH];
 
     uint16_t i, j, num_rows, packed_size;
-    uint32_t max;
 
     uint32_t offset = 60; /* Skip the first header */
 
@@ -1106,8 +1101,9 @@ static bool xm_prescan_xm0104(const char* moddata,
 
     /* Read instrument headers */
     for(i = 0; i < out->num_instruments; ++i) {
-        num_samples = READ_U16(offset + 27);
-        inst_samples_bytes = 0;
+        uint16_t num_samples = READ_U16(offset + 27);
+        uint32_t inst_samples_bytes = 0;
+
         if (_xm_ckd_add_u16_uu(&out->num_samples, out->num_samples, HAS_FEATURE(FEATURE_MULTISAMPLE_INSTRUMENTS) ? num_samples : 1)) {
             NOTICE("prescan_xm0104", "too many samples");
             return false;
@@ -1117,7 +1113,7 @@ static bool xm_prescan_xm0104(const char* moddata,
            instrument header, that value seems ignored, and might even
            be wrong in some corrupted modules. */
         if(num_samples > 0) {
-            sample_header_size = READ_U32(offset + 29);
+            uint32_t sample_header_size = READ_U32(offset + 29);
             if(sample_header_size != SAMPLE_HEADER_SIZE) {
                 NOTICE("xm_prescan_xm0104", "ignoring dodgy sample header size (%d) for instrument %d", sample_header_size, i+1);
             }
@@ -1128,13 +1124,19 @@ static bool xm_prescan_xm0104(const char* moddata,
 
         /* Read sample headers */
         for(j = 0; j < num_samples; ++j) {
+            uint32_t max = MAX_SAMPLE_LENGTH;
+            uint32_t sample_length, sample_bytes, loop_start, loop_length;
+            uint8_t flags;
+
             sample_length = READ_U32(offset);
             sample_bytes = sample_length;
             loop_start = READ_U32(offset + 4);
             loop_length = READ_U32(offset + 8);
             flags = READ_U8(offset + 14);
 
+
             sample_length = TRIM_SAMPLE_LENGTH(sample_length, loop_start, loop_length, flags);
+
             if(flags & SAMPLE_FLAG_16B) {
                 /* 16-bit sample data */
                 if(sample_length % 2) {
@@ -1143,7 +1145,7 @@ static bool xm_prescan_xm0104(const char* moddata,
                 sample_length /= 2;
             }
 
-            max = MAX_SAMPLE_LENGTH;
+            
             if(flags & SAMPLE_FLAG_PING_PONG) max /= 2;
             if(sample_length > max) {
                 NOTICE("xm_prescan_xm0104", "sample %d of instrument %d is too big (%u > %u)", j, i+1, sample_length, max);
@@ -1281,8 +1283,6 @@ static uint32_t xm_load_xm0104_pattern(xm_context_t* ctx,
 
     /* j counts bytes in the file, k counts pattern slots */
     uint16_t j, k;
-    uint8_t note;
-    xm_pattern_slot_t* slot;
 
 
     packed_patterndata_size = READ_U16(offset + 7);
@@ -1314,8 +1314,8 @@ static uint32_t xm_load_xm0104_pattern(xm_context_t* ctx,
     moddata_length = offset + packed_patterndata_size;
 
     for(j = 0, k = 0; j < packed_patterndata_size; ++k) {
-        note = READ_U8(offset + j);
-        slot = slots + k;
+        uint8_t note = READ_U8(offset + j);
+        xm_pattern_slot_t* slot = slots + k;
 
         if(note & (1 << 7)) {
             /* MSB is set, this is a compressed packet */
@@ -1435,10 +1435,12 @@ static uint32_t xm_load_xm0104_pattern(xm_context_t* ctx,
     }
 
     if(k != pat->num_rows * NUM_CHANNELS(&ctx->module)) {
-        NOTICE("xm_load_xm0104_pattern", "incomplete packed pattern data for pattern %ld, expected %u slots, got %u",
-               (long)(pat - ctx->patterns),
-               pat->num_rows * NUM_CHANNELS(&ctx->module),
-               k);
+        NOTICE("xm_load_xm0104_pattern", 
+            "incomplete packed pattern data for pattern %ld, "
+            "expected %u slots, got %u",
+            pat - ctx->patterns,
+            pat->num_rows * NUM_CHANNELS(&ctx->module),
+            k);
     }
     return offset + packed_patterndata_size;
 }
@@ -1454,10 +1456,7 @@ static uint32_t xm_load_xm0104_instrument(xm_context_t* ctx,
     uint8_t type, j;
 
 
-    bool is_16bit;
 
-    xm_sample_t* s;
-    xm_sample_point_t* sample_data;
 
     #if HAS_FEATURE(FEATURE_VOLUME_ENVELOPES)
     uint8_t vol_env_flags;
@@ -1576,6 +1575,7 @@ static uint32_t xm_load_xm0104_instrument(xm_context_t* ctx,
 
     for(i = 0; i < num_samples; ++i) {
         if(HAS_FEATURE(FEATURE_MULTISAMPLE_INSTRUMENTS) || i == 0) {
+            bool is_16bit;
             offset = xm_load_xm0104_sample_header(ctx->samples + samples_index + i, &is_16bit, moddata, moddata_length, offset);
             if(is_16bit) {
                 /* Find some free bit in the struct to pack the
@@ -1592,11 +1592,11 @@ static uint32_t xm_load_xm0104_instrument(xm_context_t* ctx,
 
     /* Read sample data */
     for(i = 0; i < num_samples; ++i) {
-        s = ctx->samples + samples_index + i;
+        xm_sample_t* s = ctx->samples + samples_index + i;
         /* As currently loaded, s->index is the real sample length in
            the xm file, s->length is after trimming to loop_end (and the
            actual sample length as stored in the context) */
-        sample_data = ctx->samples_data + ctx->module.samples_data_length;
+        xm_sample_point_t* sample_data = ctx->samples_data + ctx->module.samples_data_length;
         if(s->length & (1u << 31)) {
             s->length &= ~(1u << 31);
 
@@ -1816,13 +1816,12 @@ static void xm_load_xm0104_16b_sample_data(uint32_t length,
 static void xm_load_xm0104(xm_context_t* ctx, const char* moddata, uint32_t moddata_length) {
     /* Read module header */
     
-    xm_instrument_t* inst;
-    uint32_t offset;
     uint16_t i;
     uint8_t num_instruments;
+    uint32_t offset = xm_load_xm0104_module_header(ctx, &num_instruments, moddata, moddata_length);
     bool has_invalid_patterns;
 
-    offset = xm_load_xm0104_module_header(ctx, &num_instruments, moddata, moddata_length);
+    
 
     #if HAS_PANNING && HAS_FEATURE(FEATURE_DEFAULT_CHANNEL_PANNINGS)
     memset(ctx->module.default_channel_panning, MAX_PANNING/2, NUM_CHANNELS(&ctx->module));
@@ -1858,6 +1857,8 @@ static void xm_load_xm0104(xm_context_t* ctx, const char* moddata, uint32_t modd
 
     /* Read instruments, samples and sample data */
     for(i = 0; i < num_instruments; ++i) {
+        xm_instrument_t* inst;
+
         #if HAS_INSTRUMENTS
         inst = ctx->instruments + i;
         #else
@@ -1873,8 +1874,7 @@ static void xm_load_xm0104(xm_context_t* ctx, const char* moddata, uint32_t modd
 static bool xm_prescan_mod(const char* moddata,
                            uint32_t moddata_length,
                            xm_prescan_data_t* p) {
-    uint8_t i, pval;
-    uint32_t length, loop_start, loop_length;
+    uint8_t i;
     uint32_t min_sz;
 
 
@@ -1885,10 +1885,11 @@ static bool xm_prescan_mod(const char* moddata,
     p->samples_data_length = 0;
 
     for(i = 0; i < p->num_samples; ++i) {
+        uint32_t length = (uint32_t)(READ_U16BE(42 + 30*i) * 2);
+        uint32_t loop_start = (uint32_t)(READ_U16BE(46 + 30*i) * 2);
+        uint32_t loop_length = (uint32_t)(READ_U16BE(48 + 30*i) * 2);
+
         _XM_STATIC_ASSERT_FUNCTION(MAX_INSTRUMENTS * UINT16_MAX <= UINT32_MAX,"");
-        length = (uint32_t)(READ_U16BE(42 + 30*i) * 2);
-        loop_start = (uint32_t)(READ_U16BE(46 + 30*i) * 2);
-        loop_length = (uint32_t)(READ_U16BE(48 + 30*i) * 2);
         if(loop_length > 2) {
             length = TRIM_SAMPLE_LENGTH(length, loop_start, loop_length, SAMPLE_FLAG_FORWARD);
         }
@@ -1898,7 +1899,7 @@ static bool xm_prescan_mod(const char* moddata,
     p->pot_length = READ_U8(950);
     p->num_patterns = 0;
     for(i = 0; i < 128; ++i) {
-        pval = READ_U8(952 + i);
+        uint8_t pval = READ_U8(952 + i);
         if(pval >= p->num_patterns) {
             p->num_patterns = pval + 1;
         }
@@ -1922,21 +1923,9 @@ static bool xm_prescan_mod(const char* moddata,
 static void xm_load_mod(xm_context_t* ctx,
                         const char* moddata, uint32_t moddata_length,
                         const xm_prescan_data_t* p) {
-    uint32_t loop_start, loop_length;
-    uint32_t offset = 20;
     uint16_t i, j;
-    uint16_t period;
-    uint8_t finetune, volume;
+    uint32_t offset = 20;
 
-    xm_instrument_t* ins;
-    xm_sample_t* smp;
-    xm_pattern_t* pat;
-    xm_pattern_slot_t* slot;
-    uint32_t x;
-    static const uint8_t x_2[] = { 106, 100, 94, 89, 84, 79, 75,  70, 66, 63, 59 };
-
-    uint32_t k;
-    xm_sample_point_t* out;
 
 
     #if HAS_PANNING && HAS_FEATURE(FEATURE_DEFAULT_CHANNEL_PANNINGS)
@@ -1982,8 +1971,12 @@ static void xm_load_mod(xm_context_t* ctx,
 
     /* Read instruments */
     for(i = 0; i < ctx->module.num_samples; ++i) {
+        xm_sample_t* smp = ctx->samples + i;
+        uint8_t finetune, volume;
+        uint32_t loop_start, loop_length;
+
         #if HAS_INSTRUMENTS
-        ins = ctx->instruments + i;
+        xm_instrument_t* ins = ctx->instruments + i;
         #endif
 
         #if HAS_FEATURE(FEATURE_MULTISAMPLE_INSTRUMENTS)
@@ -1992,7 +1985,6 @@ static void xm_load_mod(xm_context_t* ctx,
         }
         #endif
 
-        smp = ctx->samples + i;
 
         #if XM_STRINGS
         _XM_STATIC_ASSERT_FUNCTION(INSTRUMENT_NAME_LENGTH >= 23,""); /* +1 for NUL */
@@ -2066,12 +2058,13 @@ static void xm_load_mod(xm_context_t* ctx,
 
     /* Read patterns */
     for(i = 0; i < ctx->module.num_patterns; ++i) {
-        pat = ctx->patterns + i;
+
+        xm_pattern_t* pat = ctx->patterns + i;
         pat->num_rows = 64;
         pat->rows_index = 64 * i;
 
         for(j = 0; j < NUM_CHANNELS(&ctx->module) * pat->num_rows; ++j) {
-            slot = ctx->pattern_slots
+            xm_pattern_slot_t * slot = ctx->pattern_slots
                 + pat->rows_index * NUM_CHANNELS(&ctx->module)
                 + j;
             /* 0bSSSSppppppppppppSSSSeeeePPPPPPPP
@@ -2081,13 +2074,17 @@ static void xm_load_mod(xm_context_t* ctx,
                                      ^ effect type
                                          ^ effect param */
             /* use hex if using older C of course */
-            x = READ_U32BE(offset);
+
+            uint16_t period;
+            uint32_t x = READ_U32BE(offset);
+
             offset += 4;
             slot->instrument = (uint8_t)(((x & 0xF0000000) >> 24) | ((x >> 12) & 0x0F));
             slot->effect_type = (uint8_t)((x >> 8) & 0x0F);
             slot->effect_param = (uint8_t)(x & 0xFF);
             period = (uint16_t)((x >> 16) & 0x0FFF);
             if(period > 0) {
+                static const uint8_t x_2[] = { 106, 100, 94, 89, 84, 79, 75,  70, 66, 63, 59 };
                 slot->note = 73;
                 while(period >= 112) {
                     period += 1;
@@ -2145,7 +2142,8 @@ static void xm_load_mod(xm_context_t* ctx,
 
     /* Read sample data */
     for(i = 0; i < ctx->module.num_samples; ++i) {
-        out = ctx->samples_data + ctx->module.samples_data_length;
+        uint32_t k;
+        xm_sample_point_t* out = ctx->samples_data + ctx->module.samples_data_length;
         for(k = 0; k < ctx->samples[i].length; ++k) {
             *out++ = SAMPLE_POINT_FROM_S8((int8_t)READ_U8(offset+k));
         }
@@ -2208,8 +2206,7 @@ static void xm_load_mod_effect(xm_pattern_slot_t* slot) {
                 new_param = WAVEFORM_RANDOM;
                 break;
             }
-            slot->effect_param = new_param
-                | ((slot->effect_param & 4) ? 128 : 0);
+            slot->effect_param = new_param | ((slot->effect_param & 4) ? 128 : 0);
             return;
         case 8:
             slot->effect_type = EFFECT_SET_CHANNEL_PANNING;
@@ -2300,17 +2297,16 @@ static void xm_load_mod_effect(xm_pattern_slot_t* slot) {
 }
 
 static void xm_fixup_mod_flt8(xm_context_t* ctx) {
-    xm_pattern_slot_t scratch[8 * 64];
     uint8_t i, j, row;
 
-    xm_pattern_t * pat;
-    xm_pattern_slot_t * slots;
 
     assert(NUM_CHANNELS(&ctx->module) == 8);
 
     for(i = 0; i < ctx->module.num_patterns; ++i) {
-        pat = ctx->patterns + i;
-        slots = ctx->pattern_slots + pat->rows_index * 8;
+        xm_pattern_t * pat = ctx->patterns + i;
+        xm_pattern_slot_t * slots = ctx->pattern_slots + pat->rows_index * 8;
+        xm_pattern_slot_t scratch[8 * 64];
+
         assert(pat->num_rows == 64);
 
         /* ch1 ch2 ch3 ch4 ch1 ch2 ch3 ch4
@@ -2325,9 +2321,9 @@ static void xm_fixup_mod_flt8(xm_context_t* ctx) {
                 *(scratch + 8 * row +     j) =  *(slots + row * 4 +          j);
                 *(scratch + 8 * row + 4 + j) =  *(slots + row * 4 + 32 * 8 + j);
             }
-            /* 
-            memcpy(scratch + 8 * row, slots + row * 4, 4 * sizeof(xm_pattern_slot_t));
-            memcpy(scratch + 8 * row + 4, slots + row * 4 + 32 * 8, 4 * sizeof(xm_pattern_slot_t));
+            /* less overhead
+            __builtin_memcpy(scratch + 8 * row, slots + row * 4, 4 * sizeof(xm_pattern_slot_t));
+            __builtin_memcpy(scratch + 8 * row + 4, slots + row * 4 + 32 * 8, 4 * sizeof(xm_pattern_slot_t));
             */
         }
         memcpy(slots, scratch, sizeof(scratch));
@@ -2352,11 +2348,6 @@ static bool xm_prescan_s3m(const char* moddata,
     uint16_t pot_length;
     uint8_t i, x, ch;
 
-    uint32_t ins_offset;
-    uint8_t ins_type;
-
-    uint32_t length, loop_start, loop_end;
-    uint8_t smp_flags;
 
     pot_length = READ_U16(32);
     out->pot_length = 0;
@@ -2398,8 +2389,12 @@ static bool xm_prescan_s3m(const char* moddata,
 
     out->samples_data_length = 0;
     for(i = 0; i < out->num_instruments; ++i) {
-        ins_offset = READ_U16(96 + pot_length + i * 2) * 16;
-        ins_type = READ_U8(ins_offset);
+
+        uint32_t ins_offset = READ_U16(96 + pot_length + i * 2) * 16;
+        uint8_t ins_type = READ_U8(ins_offset);
+        uint32_t length, loop_start, loop_end;
+        uint8_t smp_flags;
+
         /* Only care about PCM data */
         if(ins_type != 1) continue;
 
@@ -2437,7 +2432,6 @@ static void xm_load_s3m(xm_context_t* ctx,
 
     uint16_t tracker_version;
     uint16_t pot_length;
-    uint8_t mod_flags, ignored_flags;
 
 
     /* 0..32 -> channel type (0..=7 = Left PCM, 8..=15 = Right PCM, 16..=255
@@ -2447,15 +2441,8 @@ static void xm_load_s3m(xm_context_t* ctx,
     uint8_t channel_map[16] = { 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16 };
     uint8_t num_channels = 0, ch;
     
-    uint8_t x;
     uint8_t i, j;
 
-    uint32_t offset;
-    bool signed_samples;
-
-    #if HAS_PANNING && HAS_FEATURE(FEATURE_DEFAULT_CHANNEL_PANNINGS)
-    uint8_t* pan;
-    #endif
 
 
     tracker_version = READ_U16(40);
@@ -2509,20 +2496,21 @@ static void xm_load_s3m(xm_context_t* ctx,
     ctx->module.num_rows = p->num_rows;
 
     
+    {
+        uint8_t ignored_flags, mod_flags = READ_U8(38);
 
-    mod_flags = READ_U8(38);
+        #if HAS_EFFECT(EFFECT_S3M_VOLUME_SLIDE)
+        if(tracker_version == 0x1300) {
+            /* Implied ST3.00 volume slides (aka "fast slides") */
+            mod_flags |= 0x40;
+        }
+        ctx->module.fast_s3m_volume_slides = mod_flags & 0x40;
+        #endif
 
-    #if HAS_EFFECT(EFFECT_S3M_VOLUME_SLIDE)
-    if(tracker_version == 0x1300) {
-        /* Implied ST3.00 volume slides (aka "fast slides") */
-        mod_flags |= 0x40;
-    }
-    ctx->module.fast_s3m_volume_slides = mod_flags & 0x40;
-    #endif
-
-    ignored_flags = mod_flags & (HAS_EFFECT(EFFECT_S3M_VOLUME_SLIDE) ? 0xBF : 0xFF);
-    if(ignored_flags) {
-        NOTICE("xm_load_s3m", "ignoring module flags %x", ignored_flags);
+        ignored_flags = mod_flags & (HAS_EFFECT(EFFECT_S3M_VOLUME_SLIDE) ? 0xBF : 0xFF);
+        if(ignored_flags) {
+            NOTICE("xm_load_s3m", "ignoring module flags %x", ignored_flags);
+        }
     }
     
 
@@ -2534,7 +2522,8 @@ static void xm_load_s3m(xm_context_t* ctx,
     #if HAS_FEATURE(FEATURE_DEFAULT_GLOBAL_VOLUME)
     ctx->module.default_global_volume = READ_U8(48);
     if(ctx->module.default_global_volume > MAX_VOLUME) {
-        NOTICE("xm_load_s3m", "clamping initial global volume (%u -> %u)", ctx->module.default_global_volume, MAX_VOLUME);
+        NOTICE("xm_load_s3m", "clamping initial global volume (%u -> %u)", 
+                ctx->module.default_global_volume, MAX_VOLUME);
         ctx->module.default_global_volume = MAX_VOLUME;
     }
     #endif
@@ -2590,14 +2579,14 @@ static void xm_load_s3m(xm_context_t* ctx,
         /* ST3 default pannings: 0x3(L) / 0xC(R) */
         #define S3M_DEFAULT_PAN(x) ((x) < 8 ? 0x33 : 0xCC)
         for(ch = 0; ch < 32; ++ch) {
-            x = channel_settings[ch];
+            uint8_t x = channel_settings[ch];
             ctx->module.default_channel_panning[channel_map[x]] = S3M_DEFAULT_PAN(x);
         }
     } else {
         /* Use custom pannings */
         READ_MEMCPY(ctx->module.default_channel_panning, 96u + pot_length + 2u * (ctx->module.num_samples + ctx->module.num_patterns), 32);
         for(ch = 0; ch < 32; ++ch) {
-            pan = ctx->module.default_channel_panning + channel_map[channel_settings[ch]];
+            uint8_t* pan = ctx->module.default_channel_panning + channel_map[channel_settings[ch]];
             if((*pan & 0x20) == 0) {
                 /* Ignore custom value, use default */
                 *pan = S3M_DEFAULT_PAN(channel_settings[ch]);
@@ -2611,7 +2600,7 @@ static void xm_load_s3m(xm_context_t* ctx,
     #endif
 
     for(i = 0, j = 0; i < pot_length; ++i) {
-        x = READ_U8(96 + i);
+        uint8_t x = READ_U8(96 + i);
         if(x == 255) {
             assert(j == p->pot_length);
             break;
@@ -2620,17 +2609,19 @@ static void xm_load_s3m(xm_context_t* ctx,
         ctx->module.pattern_table[j++] = x;
     }
 
-    offset = 96 + pot_length;
-    signed_samples = (READ_U16(42) == 1);
-    
-    for(i = 0; i < ctx->module.num_samples; ++i) {
-        xm_load_s3m_instrument(ctx, i, signed_samples, moddata, moddata_length, 16 * READ_U16(offset));
-        offset += 2;
-    }
+    {
+        uint32_t offset = 96 + pot_length;
+        bool signed_samples = (READ_U16(42) == 1);
 
-    for(i = 0; i < ctx->module.num_patterns; ++i) {
-        xm_load_s3m_pattern(ctx, i, channel_settings, channel_map, moddata, moddata_length, 16 * READ_U16(offset));
-        offset += 2;
+        for (i = 0; i < ctx->module.num_samples; ++i) {
+            xm_load_s3m_instrument(ctx, i, signed_samples, moddata, moddata_length, 16 * READ_U16(offset));
+            offset += 2;
+        }
+
+        for (i = 0; i < ctx->module.num_patterns; ++i) {
+            xm_load_s3m_pattern(ctx, i, channel_settings, channel_map, moddata, moddata_length, 16 * READ_U16(offset));
+            offset += 2;
+        }
     }
 }
 
@@ -2755,26 +2746,21 @@ static void xm_load_s3m_pattern(xm_context_t* ctx,
                                 const char* moddata,
                                 uint32_t moddata_length,
                                 uint32_t offset) {
-    xm_pattern_t* pat;
+    xm_pattern_t* pat = ctx->patterns + patidx;
     xm_pattern_slot_t* slots;
     xm_pattern_slot_t* s;
 
     uint32_t stop;
     uint16_t read_rows = 0;
     uint8_t last_effect_parameters[32] = {0};
-    uint8_t x;
+    
 
-    bool left_ch;
 
 
     uint8_t loops[65][3] = { 0 }; /* start row, end row, loop iterations */
-    uint8_t n = 0, i, ch, row, loop_param;
+    uint8_t n = 0, i, ch, row;
 
-    xm_pattern_slot_t* s_start;
-    xm_pattern_slot_t* s_end;
-
-
-    pat = ctx->patterns + patidx;
+    
     pat->num_rows = 64;
     pat->rows_index = 64 * patidx;
 
@@ -2784,7 +2770,7 @@ static void xm_load_s3m_pattern(xm_context_t* ctx,
     offset += 2;
 
     while(offset < stop && read_rows < 64) {
-        x = READ_U8(offset);
+        uint8_t x = READ_U8(offset);
         offset += 1;
 
         if(x == 0) {
@@ -2830,6 +2816,8 @@ static void xm_load_s3m_pattern(xm_context_t* ctx,
         }
 
         if(x & 128) {
+            bool left_ch;
+
             s->effect_type = READ_U8(offset);
             s->effect_param = READ_U8(offset + 1);
             offset += 2;
@@ -3034,7 +3022,8 @@ static void xm_load_s3m_pattern(xm_context_t* ctx,
             blank_effect:
                 if(s->effect_param) {
                     /* XXX: test this behaviour in ST3 */
-                    NOTICE("xm_load_s3m_pattern", "converting effect %c(%02X)%02X in pattern %x to nop",
+                    NOTICE("xm_load_s3m_pattern", 
+                           "converting effect %c(%02X)%02X in pattern %x to nop",
                            s->effect_type + 'A' - 1,
                            s->effect_type,
                            s->effect_param,
@@ -3060,7 +3049,7 @@ static void xm_load_s3m_pattern(xm_context_t* ctx,
     s = slots;
 
     for(row = 0; row < 64; ++row) {
-        loop_param = 0;
+        uint8_t loop_param = 0;
         for(ch = 0; ch < NUM_CHANNELS(&ctx->module); ++ch) {
             if(s->effect_type == EFFECT_PATTERN_LOOP) {
                 loop_param = 128 | s->effect_param;
@@ -3106,8 +3095,9 @@ static void xm_load_s3m_pattern(xm_context_t* ctx,
 
         ch = 0;
         while(ch < NUM_CHANNELS(&ctx->module)) {
-            s_start = slots + loops[i][0] * NUM_CHANNELS(&ctx->module) + ch;
-            s_end = slots + loops[i][1] * NUM_CHANNELS(&ctx->module) + ch;
+            xm_pattern_slot_t* s_start = slots + loops[i][0] * NUM_CHANNELS(&ctx->module) + ch;
+            xm_pattern_slot_t* s_end = slots + loops[i][1] * NUM_CHANNELS(&ctx->module) + ch;
+
             if(s_start->effect_type == 0
                && s_start->effect_param == 0
                && s_end->effect_type == 0
