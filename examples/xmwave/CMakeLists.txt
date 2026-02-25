@@ -1,12 +1,13 @@
 cmake_minimum_required(VERSION 3.21)
-project(libxmize LANGUAGES C)
+project(xmwave LANGUAGES C)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
 
+set(XM_VERBOSE OFF CACHE BOOL "" FORCE)
 add_subdirectory(../../src xm_build)
 
-add_executable(libxmize libxmize.c)
-target_link_libraries(libxmize PRIVATE xm)
+add_executable(xmwave xmwave.c)
+target_link_libraries(xmwave PRIVATE xm)
 
