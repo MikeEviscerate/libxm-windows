@@ -264,28 +264,20 @@ uint8_t xm_get_instrument_of_channel(const xm_context_t* ctx, uint8_t chn) {
 }
 
 void xm_reset_context(xm_context_t* ctx) {
-    #if XM_TIMING_FUNCTIONS
-        xm_instrument_t* inst;
-        xm_sample_t* smp;
-    #endif
-    
-    #if HAS_PANNING && HAS_EFFECT(EFFECT_SET_CHANNEL_PANNING)
-        uint8_t ch;
-    #endif
-    
-    uint16_t i;
-
 
     memset(ctx->channels, 0, sizeof(xm_channel_context_t) * NUM_CHANNELS(&ctx->module));
 
-    #if HAS_PANNING && HAS_EFFECT(EFFECT_SET_CHANNEL_PANNING)
-    for(ch = 0; ch < NUM_CHANNELS(&ctx->module); ++ch) {
-        ctx->channels[ch].base_panning = DEFAULT_CHANNEL_PANNING(&ctx->module, ch);
+    #if HAS_PANNING && HAS_EFFECT(EFFECT_SET_CHANNEL_PANNING) 
+    {
+        uint8_t ch;
+        for (ch = 0; ch < NUM_CHANNELS(&ctx->module); ++ch) {
+            ctx->channels[ch].base_panning = DEFAULT_CHANNEL_PANNING(&ctx->module, ch);
+        }
     }
     #endif
 
     #if XM_LOOPING_TYPE == 2
-    memset(ctx->row_loop_count, 0, MAX_ROWS_PER_PATTERN * ctx->module.length);
+        memset(ctx->row_loop_count, 0, MAX_ROWS_PER_PATTERN * ctx->module.length);
     #endif
 
     memset((char*)ctx + offsetof(xm_context_t, remaining_samples_in_tick), 0, sizeof(xm_context_t) - offsetof(xm_context_t, remaining_samples_in_tick));
@@ -303,14 +295,18 @@ void xm_reset_context(xm_context_t* ctx) {
     #endif
 
     #if XM_TIMING_FUNCTIONS
-    inst = ctx->instruments;
-    for(i = ctx->module.num_instruments; i; --i, ++inst) {
-        inst->latest_trigger = 0;
-    }
+    {
+        xm_instrument_t* inst = ctx->instruments;
+        xm_sample_t* smp = ctx->samples;
+        uint16_t i;
+        
+        for (i = ctx->module.num_instruments; i; --i, ++inst) {
+            inst->latest_trigger = 0;
+        }
 
-    smp = ctx->samples;
-    for(i = ctx->module.num_samples; i; --i, ++smp) {
-        smp->latest_trigger = 0;
+        for (i = ctx->module.num_samples; i; --i, ++smp) {
+            smp->latest_trigger = 0;
+        }
     }
     #endif
 }
@@ -328,9 +324,8 @@ uint16_t xm_get_sample_rate(const xm_context_t* ctx) {
 /* For debugging */
 void xm_print_pattern(xm_context_t* ctx, uint8_t pat) {
     #if XM_VERBOSE
-    uint8_t ch;
     uint8_t row;
-    xm_pattern_slot_t* s;
+    uint8_t ch;
 
     static const char* const notes[] = {
         "C-", "C#", "D-", "D#", "E-", "F-",
@@ -342,9 +337,10 @@ void xm_print_pattern(xm_context_t* ctx, uint8_t pat) {
     }
     fprintf(stderr, "\n");
     for(row = 0; row < 64; ++row) {
+
         fprintf(stderr, "| %02X | ", row);
         for(ch = 0; ch < NUM_CHANNELS(&ctx->module); ++ch) {
-            s = ctx->pattern_slots + (ctx->patterns[pat].rows_index + row) * NUM_CHANNELS(&ctx->module) + ch;
+            xm_pattern_slot_t* s = ctx->pattern_slots + (ctx->patterns[pat].rows_index + row) * NUM_CHANNELS(&ctx->module) + ch;
 
             if(s->note == NOTE_KEY_OFF) {
                 fprintf(stderr, "OFF ");

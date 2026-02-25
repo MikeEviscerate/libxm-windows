@@ -34,8 +34,8 @@ const uint16_t XM_ANALYZE_OUTPUT_SIZE =
 
 /* ----- Static functions ----- */
 
-static void INLINE append_char(char*, uint16_t*, char);
-static void append_str(char*, uint16_t*, const char*);
+static void append_char(char*, uint16_t*, char);
+static void append_str(char* RESTRICT, uint16_t*, const char* RESTRICT);
 static void append_u16(char*, uint16_t*, uint16_t);
 static void append_u64(char*, uint16_t*, uint64_t);
 
@@ -44,13 +44,13 @@ static void analyze_note_trigger(xm_context_t*, xm_channel_context_t*, uint64_t*
 
 /* ----- Function definitions ----- */
 
-static void INLINE append_char(char* dest, uint16_t* dest_offset, char x) {
+static void append_char(char* dest, uint16_t* dest_offset, char x) {
     if(*dest_offset >= XM_ANALYZE_OUTPUT_SIZE) return;
     dest[*dest_offset] = x;
     *dest_offset += 1;
 }
 
-static void append_str(char* dest, uint16_t* dest_offset, const char* s) {
+static void append_str(char* RESTRICT dest, uint16_t* dest_offset, const char* RESTRICT s) {
     while(*s) {
         append_char(dest, dest_offset, *s++);
     }
@@ -90,16 +90,11 @@ static uint8_t FEATURE_WAVEFORM(uint8_t x) {
 
 
 static void analyze_note_trigger(xm_context_t* ctx, xm_channel_context_t* ch, uint64_t* used_features) {
-    uint8_t j;
     int16_t note;
-    uint16_t fs;
     xm_sample_t* smp;
 
     #if HAS_FEATURE(FEATURE_MULTISAMPLE_INSTRUMENTS)
-    xm_instrument_t* inst;
-    #endif
-    #if HAS_EFFECT(EFFECT_SET_SAMPLE_OFFSET)
-    uint16_t pos;
+    xm_instrument_t* inst = ctx->instruments + ch->next_instrument - 1;
     #endif
 
     if (ch->current->note == 0) {
@@ -111,32 +106,17 @@ static void analyze_note_trigger(xm_context_t* ctx, xm_channel_context_t* ch, ui
         return;
     }
 
-    if (ch->next_instrument == 0
-        || ch->next_instrument > NUM_INSTRUMENTS(&ctx->module)) {
+    if (ch->next_instrument == 0 || ch->next_instrument > NUM_INSTRUMENTS(&ctx->module)) {
         *used_features |= (uint64_t)1 << FEATURE_INVALID_INSTRUMENTS;
         return;
     }
 
     #if HAS_FEATURE(FEATURE_MULTISAMPLE_INSTRUMENTS)
-    inst = ctx->instruments + ch->next_instrument - 1;
     if (inst->sample_of_notes[ch->orig_note - 1] >= ctx->module.num_samples) {
         *used_features |= (uint64_t)1 << FEATURE_INVALID_SAMPLES;
         return;
     }
     smp = ctx->samples + inst->sample_of_notes[ch->orig_note - 1];
-
-    /* Find sample with lowest index (assumes this is the first/only loaded
-       sample when FEATURE_MULTISAMPLE_INSTRUMENTS is off) */
-    fs = UINT16_MAX;
-    for (j = 0; j < MAX_NOTE; ++j) {
-        if (fs > inst->sample_of_notes[j]) {
-            fs = inst->sample_of_notes[j];
-        }
-    }
-    if (inst->sample_of_notes[ch->orig_note - 1] != fs) {
-        *used_features |= (uint64_t)1 << FEATURE_MULTISAMPLE_INSTRUMENTS;
-    }
-
     #else
     smp = ctx->samples + ch->next_instrument - 1;
     #endif
@@ -152,7 +132,7 @@ static void analyze_note_trigger(xm_context_t* ctx, xm_channel_context_t* ch, ui
     #if HAS_EFFECT(EFFECT_SET_SAMPLE_OFFSET)
     if (ch->current->effect_type == EFFECT_SET_SAMPLE_OFFSET) {
         /* Effect memory already set by xm_tick()/xm_row() */
-        pos = ch->sample_offset_param * 256;
+        uint16_t pos = ch->sample_offset_param * 256;
         if (pos >= smp->length) {
             *used_features |= (uint64_t)1 << FEATURE_ACCURATE_SAMPLE_OFFSET_EFFECT;
         }
@@ -174,7 +154,6 @@ void xm_analyze(xm_context_t* ctx, char* out) {
     int16_t panning;
     uint8_t i, j;
 
-    xm_channel_context_t* ch;
 
     #if XM_DISABLED_FEATURES > 0 || XM_DISABLED_EFFECTS > 0 || XM_LOOPING_TYPE != 2
         #if defined(_XM_CMAKE) && _XM_CMAKE == 1
@@ -223,6 +202,8 @@ void xm_analyze(xm_context_t* ctx, char* out) {
     #endif
 
     while(XM_LOOPING_TYPE != 0 && LOOP_COUNT(ctx) == 0) {
+        xm_channel_context_t* ch;
+
         xm_tick(ctx);
 
         if(tempo == - 1) {

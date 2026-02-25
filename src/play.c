@@ -158,12 +158,6 @@ static int8_t xm_waveform(uint8_t waveform,
                           uint8_t step) {
 
     #if HAS_FEATURE(FEATURE_WAVEFORM_SINE)
-        static const int8_t sin_lut[] = {
-            /* 128*sinf(2?x/64) for x in 0..16 */
-            0, 12, 24, 37, 48, 60, 71, 81,
-            90, 98, 106, 112, 118, 122, 125, 127,
-        };
-        uint8_t idx;
     #endif
     #if HAS_FEATURE(FEATURE_WAVEFORM_RANDOM)
         static uint32_t state = 0;
@@ -190,8 +184,16 @@ static int8_t xm_waveform(uint8_t waveform,
     #if HAS_FEATURE(FEATURE_WAVEFORM_SINE)
     case WAVEFORM_SINE:
         step >>= 2;
-        idx = step & 0x10 ? 0xF - (step & 0xF) : (step & 0xF);
-        return (int8_t)((step < 0x20) ? -sin_lut[idx] : sin_lut[idx]);
+        {
+            static const int8_t sin_lut[] = {
+                /* 128*sinf(2?x/64) for x in 0..16 */
+                0, 12, 24, 37, 48, 60, 71, 81,
+                90, 98, 106, 112, 118, 122, 125, 127,
+            };
+            uint8_t idx;
+            idx = step & 0x10 ? 0xF - (step & 0xF) : (step & 0xF);
+            return (int8_t)((step < 0x20) ? -sin_lut[idx] : sin_lut[idx]);
+        }
     #endif
 
     #if HAS_FEATURE(FEATURE_WAVEFORM_SQUARE)
@@ -215,6 +217,9 @@ static int8_t xm_waveform(uint8_t waveform,
     #if HAS_FEATURE(FEATURE_WAVEFORM_RANDOM)
     case WAVEFORM_RANDOM:
         /* XXX: make me reentrant */
+        {
+            static uint32_t state = 0;
+        }
         return (int8_t)xm_rand16(&state);
     #endif
 
@@ -345,18 +350,8 @@ static void xm_tremor(xm_channel_context_t* ch, uint8_t param) {
 }
 #endif
 
-#if HAS_EFFECT(EFFECT_MULTI_RETRIG_NOTE) \
-    || HAS_EFFECT(EFFECT_S3M_MULTI_RETRIG_NOTE)
-static void xm_multi_retrig_note(xm_context_t* ctx, xm_channel_context_t* ch,
-                                 uint8_t param) {
-
-    static const uint8_t add[] = {
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 4, 8, 16, 0, 0,
-    };
-    static const uint8_t mul[] = {
-        1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 3, 2,
-    };
-    uint8_t x;
+#if HAS_EFFECT(EFFECT_MULTI_RETRIG_NOTE) || HAS_EFFECT(EFFECT_S3M_MULTI_RETRIG_NOTE)
+static void xm_multi_retrig_note(xm_context_t* ctx, xm_channel_context_t* ch, uint8_t param) {
 
     /* Seems to work similarly to Txy tremor effect. It uses an increasing
        counter and also runs on tick 0. */
@@ -380,11 +375,21 @@ static void xm_multi_retrig_note(xm_context_t* ctx, xm_channel_context_t* ch,
         return;
     }
 
-    x = (uint8_t)(param >> 4);
-    ch->volume += add[x];
-    ch->volume -= add[x ^ 8];
-    ch->volume *= mul[x];
-    ch->volume /= mul[x ^ 8];
+    {
+        static const uint8_t add[] = {
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 4, 8, 16, 0, 0,
+        };
+        static const uint8_t mul[] = {
+            1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 3, 2,
+        };
+        uint8_t x;
+
+        x = (uint8_t)(param >> 4);
+        ch->volume += add[x];
+        ch->volume -= add[x ^ 8];
+        ch->volume *= mul[x];
+        ch->volume /= mul[x ^ 8];
+    }
 
     _XM_STATIC_ASSERT_FUNCTION(MAX_VOLUME + 16 <= UINT8_MAX, "");
     _XM_STATIC_ASSERT_FUNCTION(MAX_VOLUME * 3 <= UINT8_MAX - 16, "");
@@ -394,10 +399,8 @@ static void xm_multi_retrig_note(xm_context_t* ctx, xm_channel_context_t* ch,
 #endif
 
 #if HAS_ARPEGGIO
-static void xm_arpeggio(const xm_context_t* ctx, xm_channel_context_t* ch,
-                        uint8_t param) {
-    uint8_t t;
-    t = CURRENT_TEMPO(ctx) - ctx->current_tick;
+static void xm_arpeggio(const xm_context_t* ctx, xm_channel_context_t* ch, uint8_t param) {
+    uint8_t t = CURRENT_TEMPO(ctx) - ctx->current_tick;
 
     if((HAS_EFFECT(EFFECT_DELAY_PATTERN) && ctx->current_tick == 0)
        || (HAS_FEATURE(FEATURE_ACCURATE_ARPEGGIO_OVERFLOW) && t == 16)
@@ -412,8 +415,7 @@ static void xm_arpeggio(const xm_context_t* ctx, xm_channel_context_t* ch,
     xm_round_period_to_semitone(ctx, ch);
     #endif
 
-    if((HAS_FEATURE(FEATURE_ACCURATE_ARPEGGIO_OVERFLOW) && t > 16)
-       || t % 3 == 2) {
+    if((HAS_FEATURE(FEATURE_ACCURATE_ARPEGGIO_OVERFLOW) && t > 16) || t % 3 == 2) {
         ch->arp_note_offset = param & 0x0F;
         return;
     }
@@ -569,9 +571,8 @@ static uint16_t xm_amiga_period(int16_t note) {
 }
 
 static uint32_t xm_amiga_frequency(uint16_t period, uint8_t arp_note_offset) {
-    float p;
+    float p = (float)period;
 
-    p = (float)period;
     if(HAS_EFFECT(EFFECT_ARPEGGIO) && arp_note_offset) {
         p *= exp2f((float)arp_note_offset / (-12.f));
         p = p < 107.f ? 107.f : p;
@@ -582,21 +583,18 @@ static uint32_t xm_amiga_frequency(uint16_t period, uint8_t arp_note_offset) {
     return (uint32_t)(4.f * 7093789.2f / (p * 2.f));
 }
 
-static uint16_t xm_period(const xm_context_t* ctx,
-                          int16_t note) {
+static uint16_t xm_period(const xm_context_t* ctx, int16_t note) {
     return AMIGA_FREQUENCIES(&ctx->module)
         ? xm_amiga_period(note)
         : xm_linear_period(note);
 }
 
-static uint32_t xm_frequency(const xm_context_t* ctx,
-                             const xm_channel_context_t* ch) {
+static uint32_t xm_frequency(const xm_context_t* ctx, const xm_channel_context_t* ch) {
     uint16_t period;
 
     assert(ch->period > 0);
     /* XXX: test wraparound/overflow */
-    period = (uint16_t)(ch->period - VIBRATO_OFFSET(ch)
-                                 - AUTOVIBRATO_OFFSET(ch));
+    period = (uint16_t)(ch->period - VIBRATO_OFFSET(ch) - AUTOVIBRATO_OFFSET(ch));
 
     return AMIGA_FREQUENCIES(&ctx->module)
         ? xm_amiga_frequency(period, ARP_NOTE_OFFSET(ch))
@@ -607,11 +605,8 @@ static uint32_t xm_frequency(const xm_context_t* ctx,
 static void xm_round_linear_period_to_semitone(xm_channel_context_t* ch) {
     /* With linear frequencies, 1 semitone is 64 period units and 16
        finetune units. */
-    uint16_t new_period;
-        
-    new_period = (uint16_t)
-        (((ch->period + FINETUNE(ch) * 4 + 32) & 0xFFC0)
-         - FINETUNE(ch) * 4);
+    uint16_t new_period = (uint16_t) (((ch->period + FINETUNE(ch) * 4 + 32) & 0xFFC0) - FINETUNE(ch) * 4);
+
     ch->glissando_control_error = (int8_t)(ch->period - new_period);
     ch->period = new_period;
 }
@@ -622,8 +617,7 @@ static void xm_round_amiga_period_to_semitone(xm_channel_context_t* ch) {
 
 /* Round period to nearest semitone. Store rounding error in
    ch->glissando_control_error. */
-static void xm_round_period_to_semitone(const xm_context_t* ctx,
-                                        xm_channel_context_t* ch) {
+static void xm_round_period_to_semitone(const xm_context_t* ctx, xm_channel_context_t* ch) {
     /* Reset glissando control error */
     xm_pitch_slide(ch, 0, 0);
 
@@ -634,11 +628,10 @@ static void xm_round_period_to_semitone(const xm_context_t* ctx,
     }
 }
 #endif
-#pragma warning(disable:6285)
-static void xm_handle_pattern_slot(xm_context_t* ctx, xm_channel_context_t* ch) {
-    xm_pattern_slot_t* s;
 
-    s = ch->current;
+static void xm_handle_pattern_slot(xm_context_t* ctx, xm_channel_context_t* ch) {
+    xm_pattern_slot_t* s = ch->current;
+
     if(s->instrument) {
         /* Always update next_instrument, even with a key-off note. */
         ch->next_instrument = s->instrument;
@@ -1213,17 +1206,15 @@ static void xm_row(xm_context_t* ctx) {
     uint8_t i;
 
     if(POSITION_JUMP(ctx) || PATTERN_BREAK(ctx)) {
-        #if HAS_POSITION_JUMP
-        if(POSITION_JUMP(ctx)) {
-            ctx->current_table_index = ctx->jump_dest;
-        } else {
-            ctx->current_table_index++;
-            MAYBE_RESTART_POT(ctx);
-        }
-        #else
-            ctx->current_table_index++;
-            MAYBE_RESTART_POT(ctx);
-        #endif
+		#if HAS_POSITION_JUMP
+		if(POSITION_JUMP(ctx)) {
+			ctx->current_table_index = ctx->jump_dest;
+		} else
+		#endif
+		{
+			ctx->current_table_index++;
+			MAYBE_RESTART_POT(ctx);
+		}
 
         #if HAS_EFFECT(EFFECT_PATTERN_BREAK)
         ctx->pattern_break = false;
@@ -1386,15 +1377,9 @@ static void xm_tick_envelopes(xm_channel_context_t* ch) {
 
 void xm_tick(xm_context_t* ctx) {
     uint8_t i;
-    int32_t base;
-    xm_channel_context_t* ch;
-    float volume;
-    float* out;
+    
     uint32_t samples_in_tick;
 
-    #if HAS_PANNING
-    uint8_t panning;
-    #endif
 
     #if HAS_EFFECT(EFFECT_DELAY_PATTERN)
     if(ctx->current_tick >= CURRENT_TEMPO(ctx)) {
@@ -1417,7 +1402,18 @@ void xm_tick(xm_context_t* ctx) {
     #endif
 
     for(i = 0; i < NUM_CHANNELS(&ctx->module); ++i) {
-        ch = ctx->channels + i;
+        int32_t base;
+
+        float* out;
+        float volume;
+
+        #if HAS_PANNING
+        uint8_t panning;
+        #endif
+
+        xm_channel_context_t* ch = ctx->channels + i;
+
+
 
         xm_tick_envelopes(ch);
 
@@ -1842,7 +1838,7 @@ static float xm_sample_at(const xm_context_t* ctx, const xm_sample_t* sample, ui
 /* XXX: rename me or merge with xm_next_of_channel */
 static float xm_next_of_sample(xm_context_t* ctx, xm_channel_context_t* ch) {
     const xm_sample_t* smp = ch->sample;
-    uint32_t off, a, b;
+    uint32_t a, b;
     float u;
     #if XM_LINEAR_INTERPOLATION
     float t;
@@ -1866,8 +1862,8 @@ static float xm_next_of_sample(xm_context_t* ctx, xm_channel_context_t* ch) {
         /* Remove extra loops. For ping-pong logic, the loop length is
            doubled, and the second half is the reverse of the looped
            part. */
-        off = (uint32_t)
-            ((smp->length - smp->loop_length) * SAMPLE_MICROSTEPS);
+        uint32_t off = (uint32_t) ((smp->length - smp->loop_length) * SAMPLE_MICROSTEPS);
+
         ch->sample_position -= off;
         ch->sample_position %= PING_PONG(smp)
             ? smp->loop_length * SAMPLE_MICROSTEPS * 2
@@ -1925,8 +1921,7 @@ static float xm_next_of_sample(xm_context_t* ctx, xm_channel_context_t* ch) {
 }
 
 static void xm_next_of_channel(xm_context_t* ctx, xm_channel_context_t* ch, float* out_left, float* out_right) {
-    float fval;
-    fval = xm_next_of_sample(ctx, ch) * AMPLIFICATION;
+    float fval = xm_next_of_sample(ctx, ch) * AMPLIFICATION;
 
     if(CHANNEL_MUTED(ch)
        || (INSTRUMENT(ch) != NULL && INSTRUMENT_MUTED(INSTRUMENT(ch)))
@@ -1945,7 +1940,7 @@ static void xm_next_of_channel(xm_context_t* ctx, xm_channel_context_t* ch, floa
     #endif
 }
 
-static INLINE void xm_sample_unmixed(xm_context_t* ctx, float* out_lr) {
+static void xm_sample_unmixed(xm_context_t* ctx, float* out_lr) {
     uint8_t i;
 
     if(_xm_ckd_sub_u32_uu(&ctx->remaining_samples_in_tick, ctx->remaining_samples_in_tick, TICK_SUBSAMPLES)) {
@@ -1964,7 +1959,7 @@ static INLINE void xm_sample_unmixed(xm_context_t* ctx, float* out_lr) {
     }
 }
 
-static INLINE void xm_sample(xm_context_t* ctx, float* out_left, float* out_right) {
+static void xm_sample(xm_context_t* ctx, float* out_left, float* out_right) {
     uint8_t i;
     if(_xm_ckd_sub_u32_uu(&ctx->remaining_samples_in_tick, ctx->remaining_samples_in_tick, TICK_SUBSAMPLES)) {
         xm_tick(ctx);
@@ -2019,12 +2014,3 @@ void xm_generate_samples_unmixed(xm_context_t* ctx, float * out, uint16_t numsam
         xm_sample_unmixed(ctx, out);
     }
 }
-
-
-
-
-
-
-
-
-
