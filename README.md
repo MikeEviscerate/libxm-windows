@@ -1,30 +1,58 @@
-libxm
+libxm-windows
 =====
 
-A small XM (Fasttracker II Extended Module) player library. Main
-features:
+Fork of [Artefact2/libxm](https://github.com/Artefact2/libxm), a small XM (Fasttracker II Extended Module) player library. 
+
+Modified to be C89 compliant. Compiles on VC 6.0, VS 2005 and VS 2026. 
+
+
+<h4>Major differences:</h4>
+
+* Can be used with C++ projects. 
+  * No `restrict` used around in `xm.h` (or `xm.h.in`). 
+
+* Windows 98 compatible. Separate archives for VC 6.0 and VS 2005 projects are provided. 
+  The VS solution includes a project for a static library, along with the examples as the other VS projects.
+  * Dynamic libraries (`.dll`s) are planned for later. Static only for now. 
+  * Modify `xm.h` to change build conditions as offered by the `CMakeLists.txt` file
+
+* Polyfills were used for missing functions and operators and macros. 
+  * The polyfills used should be as portable as possible. Intended to be C89 compliant. 
+  * C99+ features will be used instead when they are available. 
+
+* `NOTICE` and `TRACE` macros defined for internal use in `xm_internal.h` now require the 
+  names of functions they were called from (as C string) as their first argument. 
+
+* Libxm's tests are yet to work on Windows. Help needed.
+
+
+<h4>Main features:</h4>
 
 * Small and hackable: many features can be disabled at compile-time, or are
   optimized out by the compiler if not used. It is easy to bundle libxm in your
   game, demo, intro, etc.
 
-* Fairly portable. Minimal dependencies (just libm). No memory allocations.
-  Big-endian compatible (tested on s390x).
+* Fairly portable. Minimal dependencies. No memory allocations. 
 
-* Reasonable accuracy compared to Fasttracker 2. Deviations from FT2 playback,
-  that aren't obviously bugs in FT2, are also libxm bugs. If you have a module
-  that plays incorrectly, please test it in FT2/FT2clone and open an issue!
+* Reasonable accuracy compared to Fasttracker 2. Deviations from FT2 playback, that 
+  aren't obviously bugs in FT2, are also possibly libxm bugs. If you have a module that plays 
+  incorrectly, please test it in FT2/FT2clone and open an issue at [Artefact2/libxm](https://github.com/Artefact2/libxm)! \
+  **AND MAKE SURE IT IS A LIBXM ISSUE**. If it is an issue with libxm-windows, make an issue [here](../../issues?q=is%3Aissue%20state%3Aopen%20label%3Abug). 
 
-* Can load most XM/MOD/S3M files, however playback accuracy of non-XM is
-  best-effort.
+* Can load most XM/MOD/S3M files. However, playback accuracy of non-XM is best-effort. 
 
-* Timing functions for synchronising against specific instruments,
-  samples or channels.
+* Timing functions for synchronising against specific instruments, samples or channels.
 
 * Samples can be loaded and altered at run-time, making it possible to
   use libxm with softsynths or other real-time signal processors.
 
-Written in C23 and released under the WTFPL license, version 2.
+
+The name is a bit misleading. This project can be built for other platforms when compiled as C99. And it can be 
+be compiled as C89 should the user provide their own polyfills for `stdint.h` and `stdbool.h`. (check `xm.h.in`). \
+However, if possible, stick with the original project due to better optimisations and hints.
+
+Ported to C89 and released under the WTFPL license, version 2.
+
 
 Disclaimer
 ==========
@@ -41,48 +69,81 @@ In particular,
   loading code. This function is meant for sizecoding, the use case being
   statically embedding *known* modules in games, demos, intros and such.
 
-Building
+
+The same disclaimers of libxm shown above applies to libxm-windows as well. 
+Plus, 
+
+* It is not the best port to C89. It was done somewhat lazily, moving all declarations to the top
+  of the functions, even where it was not needed. There were better ways available, but I wanted
+  to avoid analyzing the code more than I needed to. I needed something that worked first, not
+  something that was fast. And something that can work on more compilers than just `msvc`. 
+
+* While it can be compiled with `msvc`, it is at the cost of some possible optimisations being lost. 
+  Lack of attributes and hinting to the compiler and what not. 
+  
+* Since the original project uses `float`s so extensively, it may be slow(er) on older computers.
+
+* This fork is not thoroughly tested. It has been tested with [one .xm file](https://opengameart.org/content/mammoth) so far. It was only tested on 
+  `msvc`, and `clang` in VS 2026. I have yet to compare the dumped contexts between Linux and Windows builds. 
+
+Building with CMake
 ========
 
-* Build the library:
+* Build the library :
 
   ~~~
   cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -Bbuild -Ssrc
-  make -C build
   ~~~
+  And then build the created solution in Visual Studio.
 
 * Build a specific example:
 
   ~~~
   cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -Bbuild-FOO -Sexamples/FOO
-  make -C build-FOO
   ~~~
+  Same as before.
 
-* To build a shared library and link dynamically, use
+* To build a shared library and link dynamically using CMake, use
   `cmake -DBUILD_SHARED_LIBS=ON`.
 
 * To see a list of build options, use `cmake -L` or `cmake-gui`.
 
-* To use libxm in your program, put these lines in the `CMakeLists.txt` of your  project, then `#include <xm.h>`:
+* To use libxm-windows in your program, put these lines in the `CMakeLists.txt` of your  project, then `#include <xm.h>`:
 
   ~~~
-  add_subdirectory(/path/to/libxm/src libxm_build)
+  add_subdirectory(/path/to/libxm-windows/src libxm_build)
   target_link_libraries(my_stuff PRIVATE xm)
   ~~~
 
 
+Building for Windows 98
+========
+
+I would recommend building this library and your own projects on VS 2005, due to it being more recent and being better at optimising stuff.
+
+* Extract the relevant .zip files in the `archives` folder to some location. E.g. `C:\`.
+
+* Open the solution or workspace file. It should be `libxm-windows.sln` or `libxm.dsw`
+
+* To see a list of equivalents to the CMake build options, look at the end of `xm.h` for further information on the 
+  macros involved. Modify the macros shown around line 48 accordingly as needed. Note, all the examples will be affected. 
+
+* For VS 2005, the process for including the headers and static libraries are same as modern Visual Studio.
+  Refer to what Cherno does [here](https://youtu.be/or1dAmUO8k0) at timestamps `10:15` and `14:40`. With, for all configurations,  
+  * `path\to\libxm-windows\include` added to 'Additional Include Directories'
+  * `path\to\libxm-windows\lib\$(ConfigurationName)\xm.lib` added to 'Additional Dependencies'
+
+* For VC 6.0, Toolbar -> Project -> Settings<sup>(or press Alt+F7)</sup>. Check [here](https://www.steptools.com/docs/help/settings_vc6.html)<sup>[(Ghost Archive)](https://ghostarchive.org/archive/YV8OH)</sup> for reference. With
+  * `path\to\libxm-windows\include` added to 'Additional include directories' in the Preprocessor category of the C/C++ tab for All Configurations.
+  * `path\to\libxm-windows\lib\Debug\xm.lib` &nbsp;&nbsp;&nbsp;added to 'Object/library modules' in the linker tab for the &nbsp;Win32 Debug&nbsp;&nbsp; configuation.
+  * `path\to\libxm-windows\lib\Release\xm.lib` added to 'Object/library modules' in the linker tab for the &nbsp;Win32 Release&nbsp; configuation.
+
+* Make sure to build the library before using it. We did not package the binaries.
+
+
+
 Size
 ====
-
-`libxmtoau` can be compiled (with all playback features enabled) and
-[crushed](https://gitlab.com/artefact2/xzcrush) to about **4285 bytes** (GCC 15.1, x86_64-linux-gnu).
-
-~~~
-cmake -DCMAKE_BUILD_TYPE=MinSizeRel -DXM_VERBOSE=OFF -DXM_LIBXM_DELTA_SAMPLES=OFF -DXM_LINEAR_INTERPOLATION=OFF -DXM_RAMPING=OFF -DXM_STRINGS=OFF -DXM_TIMING_FUNCTIONS=OFF -DXM_MUTING_FUNCTIONS=OFF -DXM_SAMPLE_TYPE=float -DXM_SAMPLE_RATE=44100 -Bbuild-libxmize -Sexamples/libxmize
-make -C build-libxmize libxmtoau
-strip -R .eh_frame_hdr -R .eh_frame build-libxmize/libxmtoau
-xzcrush build-libxmize/libxmtoau
-~~~
 
 If you are using libxm to play a single module (like in a demo/intro), disable
 features as suggested by `libxmize analyze` to save a few more bytes.
@@ -97,36 +158,25 @@ For example:
 * To get better compression of the module file itself, we also use
   `-DXM_SAMPLE_TYPE=int8_t -DXM_LIBXM_DELTA_SAMPLES=ON`
 
-* Compiling with these new flags, the resulting `libxmtoau` binary is crushed to
-  **2701 bytes**
 
 * The dumped context, as generated by `libxmize dump`, compresses to
   **299915 bytes** (the base XM file compresses to 302260 bytes)
 
-Another example with `elysium.mod` (flags used: `-DXM_DISABLED_EFFECTS=0xFFFFFFFFFFFFE3FD -DXM_DISABLED_VOLUME_EFFECTS=0xFFFE -DXM_DISABLED_FEATURES=0x047D37FFF7FFFDFB -DXM_PANNING_TYPE=1 -DXM_LOOPING_TYPE=2 -DXM_SAMPLE_TYPE=int8_t -DXM_LIBXM_DELTA_SAMPLES=OFF`): **1607 bytes** for `libxmtoau`, **73516 bytes** for the dumped context (the base MOD file compresses to 73849 bytes).
+Another example with `elysium.mod` (flags used: `-DXM_DISABLED_EFFECTS=0xFFFFFFFFFFFFE3FD -DXM_DISABLED_VOLUME_EFFECTS=0xFFFE -DXM_DISABLED_FEATURES=0x047D37FFF7FFFDFB -DXM_PANNING_TYPE=1 -DXM_LOOPING_TYPE=2 -DXM_SAMPLE_TYPE=int8_t -DXM_LIBXM_DELTA_SAMPLES=OFF`): **73516 bytes** for the dumped context (the base MOD file compresses to 73849 bytes).
 
 Examples
 ========
 
-* [libxm.js](https://artefact2.github.io/libxm.js/) is a very simple
-  XM player/visualiser that runs in a browser (emscripten port).
-
-* `xmgl` is a simple music visualiser that uses OpenGL, GLFW and JACK for very
-  precise audio synchronisation. See a demo here:
-  <https://www.youtube.com/watch?v=SR-fSa7J698>
-
-* `xmprocdemo`: a simple non-interactive demo that plays back a single module
-  with procedurally generated samples. Somewhat optimized for size. ([Dream
-  Candy](https://modarchive.org/module.php?178565) by Drozerix, public domain.
-  Thank you Drozerix for the great music!)
-
 * `libxmize`: an auxiliary tool to use various libxm features. Run `libxmize`
   without any arguments for usage instructions.
 
-* `libxmtoau` reads standard input (a file generated by `libxmize dump`) and
-  writes a .AU file to standard output. Somewhat optimized for size, see [size
-  section](#Size) above. You can test it with, for example,
-  `libxmize dump file.xm | libxmtoau | mpv -`.
+* A sort of replacement for `libxmtoau` is planned. As it cannot be ported easily to Windows. 
+  And any CLI players I wrote so far are too finicky on Windows 98.
+  
+* `xmwave` is a CLI program written for this libxm fork. It takes a tracker file as input, 
+  and converts and saves it to a (16-bit PCM, 48kHz, mono) `.wav` file. 
+  * Usage: `xmwave path\to\file.xm  path\to\output.wav`
+
 
 Here are some interesting modules, most showcase unusual or advanced
 tracking techniques (and thus are a good indicator of a player's
@@ -161,40 +211,24 @@ Known inaccuracies
 * (S3M only) Stereo samples are not supported (not in base ST3)
 
 To report more, please [open an issue](../../issues?q=is%3Aissue%20state%3Aopen%20label%3Abug).
+**DO NOT HARASS [Artefact2](https://github.com/Artefact2) OVER ISSUES OF THIS FORK!** 
 
 Tests
 =====
 
-Some test XM files are in the `tests` directory.
+Some XM files for testing can be found in the `tests` directory. 
 
-A few tests can be automatically run (failing tests marked XXX are not
-regressions, but bugs/inaccuracies that have yet to be fixed):
+Libxm comes with some tests. And while I ported them to C89, the tests do not work entirely on Windows. 
+I think it is because the tests were made for Linux in mind rather than the library not working identically. 
 
-~~~
-cmake -Bbuild-tests -Stests
-make -C build-tests all test
-~~~
-
-Other tests require manual checking, see the table below.
-
-~~~
-Test                            | Status         | Tested against         | Extras
---------------------------------+----------------+------------------------+------------------------------------------------
-autovibrato-triggers.xm         | MOSTLY         | FT2clone 1.94          | Should sound identical. Use a spectrogram as it is very hard to hear subtle changes in pitch.
-pattern-loop-quirk.xm           | PASS           | MilkyTracker           | Should play the same notes at the same time.
-pos_jump.xm                     | PASS           | Milkytracker, OpenMPT  | Only one beep should be heard.
-ramping.xm                      | PASS           | FT2clone 1.94          | If XM_RAMPING is ON, output should be mostly frame for frame identical.
-waveform-control-autovibrato.xm | PASS           | FT2clone 1.94          | Should sound identical. Patterns 0 and 1 should also sound identical. Use a spectrogram as it is very hard to hear subtle changes in pitch.
-waveform-control-combo.xm       | PASS           | FT2clone 1.94          | Should sound identical.
-waveform-control-tremolo.xm     | PASS           | FT2clone 1.94          | Should sound identical.
-waveform-control-tremolo.s3m    | FAIL           | Scream Tracker 3.21    | Should sound identical (except random waveform bits).
-waveform-control-vibrato.xm     | PASS           | FT2clone 1.94          | Should sound identical.
-~~~
+I do not know much about getting them to work. But I welcome any sane contributions here. 
 
 Thanks
 ======
 
 Thanks to:
+
+* Romain "Artefact2" Dalmaso <artefact2@gmail.com>, for creating his wonderful project. 
 
 * Thunder <kurttt@sfu.ca>, for writing the `modfil10.txt` file;
 
