@@ -1,16 +1,27 @@
 cmake_minimum_required(VERSION 3.21)
+include(CheckCCompilerFlag)
 
 project(libxm-windows LANGUAGES C)
-set(CMAKE_C_STANDARD 23)
-set(CMAKE_C_STANDARD_REQUIRED OFF)
+
+foreach(std 23 17 11 99)
+    if(MSVC)
+        check_c_compiler_flag("/std:c${std}" C_STD_${std}_SUPPORTED)
+    else()
+        check_c_compiler_flag("-std=c${std}" C_STD_${std}_SUPPORTED)
+    endif()
+    if(C_STD_${std}_SUPPORTED)
+        set(CMAKE_C_STANDARD ${std})
+        break()
+    endif()
+endforeach()
+
+if(NOT CMAKE_C_STANDARD)
+    message(FATAL_ERROR "C99 or newer is required for building via CMake. Use the VS 6.0 or VS 2005 projects for C89")
+endif()
+
+set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG OFF)
-
-if(CMAKE_C_STANDARD LESS 99)
-    if(CMAKE_C_STANDARD GREATER_EQUAL 89)
-        message(FATAL_ERROR "C99 or newer is required for building via CMake. Use the VS 6.0 or VS 2005 projects for C89")
-    endif()
-endif()
 
 
 add_library(xm_common INTERFACE)
