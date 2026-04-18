@@ -1921,7 +1921,7 @@ static float xm_next_of_sample(xm_context_t* ctx, xm_channel_context_t* ch) {
 }
 
 static void xm_next_of_channel(xm_context_t* ctx, xm_channel_context_t* ch, float* out_left, float* out_right) {
-    float fval = xm_next_of_sample(ctx, ch) * AMPLIFICATION;
+    const float fval = xm_next_of_sample(ctx, ch) * AMPLIFICATION;
 
     if(CHANNEL_MUTED(ch)
        || (INSTRUMENT(ch) != NULL && INSTRUMENT_MUTED(INSTRUMENT(ch)))

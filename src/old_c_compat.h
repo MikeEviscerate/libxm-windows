@@ -8,7 +8,7 @@
 
 
 
-/* Any functions declared here will be defined in xm.c */
+/* Any functions declared here will be defined at the end of xm.c */
 
 
 /* if you wanna disable my attempt at C89 static_assert, comment the #define below out */ 
@@ -19,17 +19,17 @@
 /* assume() for replacing asserts() when compiled for release */
 
 #if defined(_MSC_VER) && _MSC_VER >= 1310   /* VS .NET 2003 and later */ 
-    #define assume(x)  __assume(x)
-#elif defined(__clang__)
-    #define assume(cond)  __builtin_assume(cond)
+    #define assume(x)  do { bool y = (x); __assume(y);} while(0)
+#elif defined(__clang__)  
+    #define assume(x)  do { bool y = (x); __builtin_assume(y); } while(0)
 #elif defined(__GNUC__) 
     #if __GNUC__ >= 13
-        #define assume(cond)  __attribute__((assume(cond)))
+        #define assume(x)  do { bool y = (x); __attribute__((assume(y)));} while(0)
     #else
-        #define assume(cond)  do { if (!(cond)) __builtin_unreachable(); } while (0)
+        #define assume(x)  do { if (!(x)) {__builtin_unreachable();} } while(0)
     #endif
 #else
-    #define assume(x)
+    #define assume(x) do {(x);} while(0)
 #endif
 
 
@@ -196,94 +196,94 @@ use separate definitions for each special case */
 
 /* for pre C23 compat */
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
-    #include <stdckdint.h>
-    
-    #define _xm_ckd_add_u8_uu _xm_ckd_add
-    #define _xm_ckd_sub_u8_uu _xm_ckd_sub
-    #define _xm_ckd_add_u16_ui _xm_ckd_add
-    #define _xm_ckd_add_u16_uu _xm_ckd_add
-    #define _xm_ckd_add_u32_uu _xm_ckd_add
-    #define _xm_ckd_sub_u32_uu _xm_ckd_sub
-    #define _xm_ckd_mul_u32_uu _xm_ckd_mul
+#include <stdckdint.h>
+
+#define _xm_ckd_add_u8_uu _xm_ckd_add
+#define _xm_ckd_sub_u8_uu _xm_ckd_sub
+#define _xm_ckd_add_u16_ui _xm_ckd_add
+#define _xm_ckd_add_u16_uu _xm_ckd_add
+#define _xm_ckd_add_u32_uu _xm_ckd_add
+#define _xm_ckd_sub_u32_uu _xm_ckd_sub
+#define _xm_ckd_mul_u32_uu _xm_ckd_mul
 
 #else
     /*I know it's bad to do it this way, but I linker error otherwise*/
-    static INLINE bool _xm_ckd_add_u8_uu(uint8_t* result, uint8_t x, uint8_t y) {
-        uint16_t res = x;
-        res += y;
-        if (res > UINT8_MAX) {
-            *result = (uint8_t)(res & UINT8_MAX);
-            return true;
-        }
-        *result = (uint8_t)res;
-        return false;
+static INLINE bool _xm_ckd_add_u8_uu(uint8_t* result, uint8_t x, uint8_t y) {
+    uint16_t res = x;
+    res += y;
+    if (res > UINT8_MAX) {
+        *result = (uint8_t)(res & UINT8_MAX);
+        return true;
     }
+    *result = (uint8_t)res;
+    return false;
+}
 
-    static INLINE bool _xm_ckd_sub_u8_uu(uint8_t* result, uint8_t x, uint8_t y) {
-        int16_t res = x;
-        res -= y;
-        if (res < 0) {
-            *result = (uint8_t)(res & UINT8_MAX);
-            return true;
-        }
-        *result = (uint8_t)res;
-        return false;
+static INLINE bool _xm_ckd_sub_u8_uu(uint8_t* result, uint8_t x, uint8_t y) {
+    int16_t res = x;
+    res -= y;
+    if (res < 0) {
+        *result = (uint8_t)(res & UINT8_MAX);
+        return true;
     }
+    *result = (uint8_t)res;
+    return false;
+}
 
-    static INLINE bool _xm_ckd_add_u16_uu(uint16_t* result, uint16_t x, uint16_t y) {
-        uint32_t res = x;
-        res += y;
-        if (res > UINT16_MAX) {
-            *result = (uint16_t)(res & UINT16_MAX);
-            return true;
-        }
-        *result = (uint16_t)res;
-        return false;
+static INLINE bool _xm_ckd_add_u16_uu(uint16_t* result, uint16_t x, uint16_t y) {
+    uint32_t res = x;
+    res += y;
+    if (res > UINT16_MAX) {
+        *result = (uint16_t)(res & UINT16_MAX);
+        return true;
     }
+    *result = (uint16_t)res;
+    return false;
+}
 
-    static INLINE bool _xm_ckd_add_u16_ui(uint16_t* result, uint16_t x, int16_t y) {
-        int32_t res = x;
-        res += y;
-        if (res > UINT16_MAX) {
-            *result = (uint16_t)(res & UINT16_MAX);
-            return true;
-        }
-        *result = (uint16_t)res;
-        return false;
+static INLINE bool _xm_ckd_add_u16_ui(uint16_t* result, uint16_t x, int16_t y) {
+    int32_t res = x;
+    res += y;
+    if (res > UINT16_MAX) {
+        *result = (uint16_t)(res & UINT16_MAX);
+        return true;
     }
+    *result = (uint16_t)res;
+    return false;
+}
 
-    static INLINE bool _xm_ckd_add_u32_uu(uint32_t* result, uint32_t x, uint32_t y) {
-        uint64_t res = x;
-        res += y;
-        if (res > UINT32_MAX) {
-            *result = (uint32_t)(res & UINT32_MAX);
-            return true;
-        }
-        *result = (uint32_t)res;
-        return false;
+static INLINE bool _xm_ckd_add_u32_uu(uint32_t* result, uint32_t x, uint32_t y) {
+    uint64_t res = x;
+    res += y;
+    if (res > UINT32_MAX) {
+        *result = (uint32_t)(res & UINT32_MAX);
+        return true;
     }
+    *result = (uint32_t)res;
+    return false;
+}
 
-    static INLINE bool _xm_ckd_sub_u32_uu(uint32_t* result, uint32_t x, uint32_t y) {
-        int64_t res = x;
-        res -= y;
-        if (res < 0) {
-            *result = (uint32_t)(res & UINT32_MAX);
-            return true;
-        }
-        *result = (uint32_t)res;
-        return false;
+static INLINE bool _xm_ckd_sub_u32_uu(uint32_t* result, uint32_t x, uint32_t y) {
+    int64_t res = x;
+    res -= y;
+    if (res < 0) {
+        *result = (uint32_t)(res & UINT32_MAX);
+        return true;
     }
+    *result = (uint32_t)res;
+    return false;
+}
 
-    static INLINE bool _xm_ckd_mul_u32_uu(uint32_t* result, uint32_t x, uint32_t y) {
-        uint64_t res = x;
-        res *= y;
-        if (res > UINT32_MAX) {
-            *result = (uint32_t)(res & UINT32_MAX);
-            return true;
-        }
-        *result = (uint32_t)res;
-        return false;
+static INLINE bool _xm_ckd_mul_u32_uu(uint32_t* result, uint32_t x, uint32_t y) {
+    uint64_t res = x;
+    res *= y;
+    if (res > UINT32_MAX) {
+        *result = (uint32_t)(res & UINT32_MAX);
+        return true;
     }
+    *result = (uint32_t)res;
+    return false;
+}
 #endif
 
 
@@ -296,18 +296,18 @@ use separate definitions for each special case */
 /* C23 bit manipulation */
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
     /* use the compiler's implementation instead of my potentially crap code */
-    #include <stdbit.h>
+#include <stdbit.h>
 
-    #define _xm_count_ones stdc_count_ones
+#define _xm_count_ones stdc_count_ones
 #else
-    static INLINE uint8_t _xm_count_ones(uint16_t x) {
-        uint8_t i = 0;
-        while (x) {
-            i += x & 1;
-            x = x >> 1;
-        }
-        return i;
+static INLINE uint8_t _xm_count_ones(uint16_t x) {
+    uint8_t i = 0;
+    while (x) {
+        i += x & 1;
+        x = x >> 1;
     }
+    return i;
+}
 #endif
 
 

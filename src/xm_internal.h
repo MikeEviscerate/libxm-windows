@@ -41,6 +41,7 @@
     #ifdef assert
         #undef assert
     #endif
+    /* Note that assume(x) will evaluate any expressions in release builds */
     #define assert(x) assume(x)
 #endif
 
